@@ -18,19 +18,15 @@ import {
   HealthSchema,
   ProductCardSchema,
   ProductInputSchema,
-  type ApiError,
 } from "../contract";
 import { generateCard, type GenerateCard } from "../core";
+import { apiError, mapCoreError } from "./errors";
 
 export interface AppOptions {
   generate?: GenerateCard;
   /** Каталог собранного фронта; если есть — отдаётся статикой. */
   webDir?: string;
   logger?: boolean;
-}
-
-function apiError(code: string, message: string, details?: unknown): ApiError {
-  return { error: { code, message, ...(details === undefined ? {} : { details }) } };
 }
 
 export async function buildApp(options: AppOptions = {}): Promise<FastifyInstance> {
@@ -48,6 +44,11 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     if (isResponseSerializationError(err)) {
       req.log.error(err);
       return reply.code(500).send(apiError("invalid_output", "Ответ не прошёл проверку схемы"));
+    }
+    const mapped = mapCoreError(err);
+    if (mapped) {
+      req.log.warn({ code: mapped[1].error.code }, "ошибка ядра");
+      return reply.code(mapped[0]).send(mapped[1]);
     }
     if ((err as { statusCode?: number }).statusCode === 400) {
       return reply.code(400).send(apiError("bad_request", "Некорректный запрос"));
@@ -75,7 +76,11 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     {
       schema: {
         body: ProductInputSchema,
-        response: { 200: ProductCardSchema, 400: ApiErrorSchema, 500: ApiErrorSchema },
+        response: {
+          200: ProductCardSchema,
+          "4xx": ApiErrorSchema,
+          "5xx": ApiErrorSchema,
+        },
       },
     },
     async (req) => generate(req.body),
