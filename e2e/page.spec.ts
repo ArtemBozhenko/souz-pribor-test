@@ -7,6 +7,9 @@ import { readFile } from "node:fs/promises";
 test.use({ permissions: ["clipboard-read", "clipboard-write"] });
 
 const generate = (page: Page) => page.getByRole("button", { name: "Сгенерировать" }).click();
+const modelSelect = (page: Page) => page.getByRole("combobox", { name: "Модель" });
+/** Список моделей загружен: дальше запрос уходит с явным model. */
+const modelsReady = (page: Page) => expect(modelSelect(page)).toHaveValue("claude-sonnet-5-5");
 const block = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
 
 async function mockCard(page: Page, card: ProductCard) {
@@ -29,6 +32,7 @@ test("форма → карточка на заглушке: блоки, счё�
   await page.getByLabel("Характеристика 2").fill("Класс точности");
   await page.getByLabel("Значение 2").fill("1,5");
   await page.getByLabel("Описание или текст паспорта").fill("Корпус 100 мм.");
+  await modelsReady(page);
   const req = page.waitForRequest("**/api/generate");
   await generate(page);
   expect((await req).postDataJSON()).toEqual({
@@ -36,6 +40,7 @@ test("форма → карточка на заглушке: блоки, счё�
     manufacturer: "Союз-Прибор",
     specs: { "Диаметр корпуса": "100 мм", "Класс точности": "1,5" },
     description: "Корпус 100 мм.",
+    model: "claude-sonnet-5-5",
   });
 
   for (const name of ["SEO-заголовок", "SEO-описание", "Характеристики", "Поисковые запросы", "Коммерческий блок"]) {
@@ -51,7 +56,7 @@ test("форма → карточка на заглушке: блоки, счё�
   const issues = page.getByRole("region", { name: "Требует уточнения" });
   await expect(issues).toContainText("Класс точности");
   await expect(page.getByRole("region", { name: "Предупреждения" })).toContainText("заглушка");
-  await expect(page.getByTestId("meta")).toHaveText("Модель: stub · Провайдер: stub · Попыток: 0 · Время: 0.0 с");
+  await expect(page.getByTestId("meta")).toHaveText("Модель: claude-sonnet-5-5 · Провайдер: stub · Попыток: 0 · Время: 0.0 с");
 
   await expect(block(page, "SEO-заголовок")).toContainText(STUB_CARD.seo_title);
   await expect(block(page, "SEO-описание")).toContainText(STUB_CARD.seo_description);
@@ -129,9 +134,10 @@ test("вкладка JSON: валидный ввод уходит на API", asy
   await page.goto("/");
   await page.getByRole("tab", { name: "JSON" }).click();
   await page.getByLabel("JSON с данными").fill(JSON.stringify({ name: "Термометр ТБ-1" }));
+  await modelsReady(page);
   const req = page.waitForRequest("**/api/generate");
   await generate(page);
-  expect((await req).postDataJSON()).toEqual({ name: "Термометр ТБ-1" });
+  expect((await req).postDataJSON()).toEqual({ name: "Термометр ТБ-1", model: "claude-sonnet-5-5" });
   await expect(block(page, "SEO-заголовок")).toBeVisible();
 });
 
@@ -204,13 +210,15 @@ test("скачивание .json и .md", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Подставить пример" }).click();
   await generate(page);
+  // Заглушка ставит в meta выбранную модель (без явного выбора — по умолчанию).
+  const stub: ProductCard = { ...STUB_CARD, meta: { ...STUB_CARD.meta, model: "claude-sonnet-5-5" } };
   const [json] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Скачать .json" }).click()]);
   expect(json.suggestedFilename()).toBe("card.json");
-  expect(JSON.parse(await readFile(await json.path(), "utf8"))).toEqual(STUB_CARD);
+  expect(JSON.parse(await readFile(await json.path(), "utf8"))).toEqual(stub);
   const [md] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Скачать .md" }).click()]);
   expect(md.suggestedFilename()).toBe("card.md");
   const mdText = await readFile(await md.path(), "utf8");
-  expect(mdText).toBe(cardToMarkdown(STUB_CARD));
+  expect(mdText).toBe(cardToMarkdown(stub));
   expect(mdText).toContain(STUB_CARD.seo_description);
   expect(mdText).toContain("| Диаметр корпуса | 100 мм |");
 });
@@ -240,4 +248,44 @@ test("пример — реальный ТМ-520Р; на телефоне наз
   const multiline = page.getByLabel("Значение 3");
   await expect(multiline).toHaveValue("0 - 100;\n-0,1 - 0;\n-0,1 - 24;");
   expect(await multiline.evaluate((el: HTMLTextAreaElement) => el.scrollHeight > el.clientHeight + 1)).toBe(false);
+});
+
+test.describe("выбор модели", () => {
+  test("список из /api/models, выбор уходит в запрос, meta.model показан, выбор запоминается", async ({ page }) => {
+    await page.goto("/");
+    await modelsReady(page);
+    await expect(modelSelect(page).locator("option")).toHaveText([
+      "Claude Sonnet 5.5 — по умолчанию",
+      "Claude Opus 5.5 — точнее, дороже",
+      "Claude Haiku 5.5 — быстрее, дешевле",
+    ]);
+    await modelSelect(page).selectOption("claude-haiku-5-5");
+    await page.getByLabel("Название").fill("Манометр МП-100");
+    const req = page.waitForRequest("**/api/generate");
+    await generate(page);
+    expect((await req).postDataJSON()).toEqual({ name: "Манометр МП-100", model: "claude-haiku-5-5" });
+    await expect(page.getByTestId("meta")).toContainText("Модель: claude-haiku-5-5");
+
+    await page.reload();
+    await expect(modelSelect(page)).toHaveValue("claude-haiku-5-5");
+  });
+
+  test("пока список не загрузился, запрос уходит без model — на модели по умолчанию", async ({ page }) => {
+    await page.route("**/api/models", () => {}); // ответ не приходит
+    await page.goto("/");
+    await page.getByLabel("Название").fill("Манометр МП-100");
+    const req = page.waitForRequest("**/api/generate");
+    await generate(page);
+    expect((await req).postDataJSON()).toEqual({ name: "Манометр МП-100" });
+    await expect(modelSelect(page)).toHaveCount(0);
+    await expect(page.getByTestId("meta")).toContainText("Модель: claude-sonnet-5-5");
+  });
+
+  test("неизвестная модель → 400 unsupported_model по-русски", async ({ request }) => {
+    const res = await request.post("/api/generate", { data: { name: "Манометр МП-100", model: "gpt-4o" } });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("unsupported_model");
+    expect(body.error.message).toMatch(/не поддерживается/);
+  });
 });

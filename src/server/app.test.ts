@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { ApiErrorSchema, ProductCardSchema } from "../contract";
-import { STUB_CARD } from "../core";
+import { STUB_CARD, generateCard } from "../core";
 import { buildApp } from "./app";
 
 let app: FastifyInstance;
@@ -98,5 +98,50 @@ describe("ошибки ядра → ApiError с HTTP-кодом по смысл�
     expect(res.statusCode).toBe(500);
     expect(res.body).not.toContain("secret");
     expect(ApiErrorSchema.parse(res.json()).error.code).toBe("internal");
+  });
+});
+
+describe("выбор модели", () => {
+  const env = { LLM_API_KEY: "", LLM_MODEL: "claude-sonnet-5-5", LLM_MODELS: "claude-sonnet-5-5,claude-haiku-5-5" };
+
+  it("GET /api/models отдаёт модель по умолчанию и список с подписями", async () => {
+    const app = await buildApp({ env });
+    const res = await app.inject({ method: "GET", url: "/api/models" });
+    const spec = await app.inject({ method: "GET", url: "/api/docs/json" });
+    await app.close();
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      default: "claude-sonnet-5-5",
+      models: [
+        { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 — по умолчанию" },
+        { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 — быстрее, дешевле" },
+      ],
+    });
+    expect(spec.json().paths).toHaveProperty("/api/models");
+  });
+
+  it("model из тела доходит до клиента LLM, неизвестная — 400 unsupported_model", async () => {
+    const seen: string[] = [];
+    const app = await buildApp({
+      env,
+      generate: (input) =>
+        generateCard(input, {
+          env,
+          createClient: (cfg) => {
+            seen.push(cfg.LLM_MODEL);
+            return null;
+          },
+        }),
+    });
+    const ok = await app.inject({ method: "POST", url: "/api/generate", payload: { name: "X", model: "claude-haiku-5-5" } });
+    const bad = await app.inject({ method: "POST", url: "/api/generate", payload: { name: "X", model: "gpt-4o" } });
+    await app.close();
+    expect(ok.statusCode).toBe(200);
+    expect(seen).toEqual(["claude-haiku-5-5"]);
+    expect(ok.json().meta.model).toBe("claude-haiku-5-5");
+    expect(bad.statusCode).toBe(400);
+    const body = ApiErrorSchema.parse(bad.json());
+    expect(body.error.code).toBe("unsupported_model");
+    expect(body.error.message).toMatch(/[а-яё]/i);
   });
 });

@@ -110,6 +110,17 @@ for f in tm-520r pd100 dm02; do npm run generate -- examples/$f.json; done
 | Anthropic напрямую | `anthropic` | пусто | `claude-sonnet-5-5` |
 | Z.ai (бесплатно) | `anthropic` | `https://api.z.ai/api/anthropic` | `glm-4.5-flash` |
 
+**Выбор модели.** Список задаёт сервер переменной `LLM_MODELS` через запятую, модель по умолчанию — `LLM_MODEL` (она всегда в списке; без `LLM_MODELS` список из неё одной). Провайдер и ключ на инстанс один: все модели списка идут через него, смешивать провайдеров нельзя.
+
+| Провайдер | Пример `LLM_MODELS` |
+|---|---|
+| Anthropic напрямую или OpenCode Zen, Claude | `claude-sonnet-5-5,claude-opus-5-5,claude-haiku-5-5` |
+| OpenCode Zen, другие модели (`openai-compatible`) | id моделей из каталога Zen через запятую |
+
+- **Интерфейс:** выпадающий список рядом с кнопкой «Сгенерировать», выбор запоминается в браузере. Пока список не загрузился, генерация идёт на модели по умолчанию. Модель, на которой сделана карточка, показана внизу карточки.
+- **API:** `GET /api/models` → `{ default, models: [{ id, label }] }`; в `POST /api/generate` необязательное поле `model`. Модель вне списка — 400 `unsupported_model` с русским сообщением, на модель по умолчанию запрос не подменяется.
+- **CLI:** `npm run generate -- --model claude-haiku-5-5 input.json`, та же проверка по списку.
+
 Целевая модель — Claude Sonnet 5.5: хорошо держит русский деловой текст и длинные инструкции, поддерживает structured output. Дополнительно: `LLM_EFFORT` (только anthropic) и `LLM_STRUCTURED` (`auto` / `on` / `off`).
 
 Карточки примеров сгенерированы на `claude-sonnet-5-5`. Демо пока работает на бесплатной `glm-4.5-flash` через Z.ai; защита от выдумок от модели не зависит, потому что работает в коде.
@@ -117,7 +128,7 @@ for f in tm-520r pd100 dm02; do npm run generate -- examples/$f.json; done
 ## Обработка ошибок
 
 - Битый JSON на входе — ошибка со строкой и столбцом, до вызова модели. Пустое `name` — ошибка. Пустые поля считаются отсутствующими.
-- Ошибки провайдера переводятся в сообщения по-русски с кодом ошибки (`llm_auth`, `llm_rate_limit`, `llm_timeout`, `llm_overloaded`, `llm_refusal` и др.) и `request_id`. HTTP-код ответа API: битый вход — 400, таймаут модели — 504, лимит запросов и перегрузка провайдера — 503, неверный ключ, отказ модели и прочие сбои провайдера — 502.
+- Ошибки провайдера переводятся в сообщения по-русски с кодом ошибки (`llm_auth`, `llm_rate_limit`, `llm_timeout`, `llm_overloaded`, `llm_refusal` и др.) и `request_id`. HTTP-код ответа API: битый вход и модель вне `LLM_MODELS` (`unsupported_model`) — 400, таймаут модели — 504, лимит запросов и перегрузка провайдера — 503, неверный ключ, отказ модели и прочие сбои провайдера — 502.
 - Ответ модели не по схеме — повтор с текстом ошибки, после трёх неудач — черновик из входа.
 
 ## Заметка про DM 02 из ТЗ
@@ -162,7 +173,7 @@ for f in tm-520r pd100 dm02; do npm run generate -- examples/$f.json; done
 ```
 src/contract   схемы zod — единственный источник типов
 src/core       входные данные, промпты, адаптеры LLM, проверки, конвейер, Markdown
-src/server     Fastify: /api/generate, /api/health, Swagger UI, раздача фронта
+src/server     Fastify: /api/generate, /api/models, /api/health, Swagger UI, раздача фронта
 src/web        интерфейс контент-менеджера
 src/cli        npm run generate
 fixtures       реальные товары и краевые входы для тестов

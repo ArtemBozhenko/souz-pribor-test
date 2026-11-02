@@ -4,9 +4,14 @@ import { InputPanel } from "@/components/input/InputPanel";
 import { ResultView } from "@/components/result/ResultView";
 import { EmptyState, ErrorState, LoadingState } from "@/components/result/StatusViews";
 import { useGenerate } from "@/hooks/useGenerate";
+import { useModels } from "@/hooks/useModels";
+import type { ProductInput } from "../contract";
 
 export function App() {
   const { state, run } = useGenerate();
+  const models = useModels();
+  // Пока список не загрузился, поле model не передаётся — сервер берёт модель по умолчанию.
+  const submit = (input: ProductInput) => run(models.model ? { ...input, model: models.model } : input);
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
       <header className="mb-6">
@@ -17,7 +22,13 @@ export function App() {
       </header>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className="lg:sticky lg:top-6 lg:self-start">
-          <InputPanel loading={state.status === "loading"} onSubmit={run} />
+          <InputPanel
+            loading={state.status === "loading"}
+            onSubmit={submit}
+            models={models.list?.models ?? null}
+            model={models.model}
+            onModelChange={models.setModel}
+          />
         </div>
         <div className="min-w-0">
           {state.status === "idle" && <EmptyState />}

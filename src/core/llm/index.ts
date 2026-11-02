@@ -9,7 +9,7 @@ import { CoreError, mapProviderError } from "../errors";
 import { MODEL_OUTPUT_JSON_SCHEMA } from "./output-schema";
 import type { LlmConfig } from "./config";
 
-export { readLlmConfig, type LlmConfig } from "./config";
+export { listModels, readLlmConfig, type LlmConfig, type ModelList, type ModelOption } from "./config";
 
 export interface ChatMessage {
   role: "user" | "assistant";

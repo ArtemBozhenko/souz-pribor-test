@@ -4,6 +4,12 @@ import { defineConfig, devices } from "@playwright/test";
 const prodPort = 3100;
 const devApiPort = 3101;
 const devWebPort = 5174;
+/** Модели для выбора в e2e; ключа нет — отвечает заглушка с выбранной моделью в meta. */
+const llmEnv = {
+  LLM_API_KEY: "",
+  LLM_MODEL: "claude-sonnet-5-5",
+  LLM_MODELS: "claude-sonnet-5-5,claude-opus-5-5,claude-haiku-5-5",
+};
 
 export default defineConfig({
   testDir: "e2e",
@@ -16,14 +22,14 @@ export default defineConfig({
     {
       command: "npm run build && tsx src/server/main.ts",
       url: `http://127.0.0.1:${prodPort}/api/health`,
-      env: { PORT: String(prodPort) },
+      env: { ...llmEnv, PORT: String(prodPort) },
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
       command: "npm run dev",
       url: `http://127.0.0.1:${devWebPort}/api/health`,
-      env: { PORT: String(devApiPort), WEB_PORT: String(devWebPort) },
+      env: { ...llmEnv, PORT: String(devApiPort), WEB_PORT: String(devWebPort) },
       reuseExistingServer: false,
       timeout: 120_000,
     },

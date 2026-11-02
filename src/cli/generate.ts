@@ -1,5 +1,6 @@
 /**
- * CLI: `npm run generate -- <input.json>` → рядом `<input>.card.json` и `<input>.card.md`.
+ * CLI: `npm run generate -- [--model <id>] <input.json>` → рядом `<input>.card.json` и `<input>.card.md`.
+ * `--model` — модель из списка LLM_MODELS (по умолчанию LLM_MODEL); вне списка — ошибка unsupported_model.
  * Без файла читает JSON со stdin и печатает карточку в stdout.
  * Ключ модели — только из env (LLM_API_KEY); без ключа отдаётся заглушка.
  */
@@ -21,10 +22,38 @@ function outputPaths(file: string): { json: string; md: string } {
   return { json: path.join(dir, `${base}.card.json`), md: path.join(dir, `${base}.card.md`) };
 }
 
+const USAGE = "Использование: npm run generate -- [--model <id>] <input.json>";
+
+function parseArgs(argv: string[]): { file?: string; model?: string } | null {
+  let file: string | undefined;
+  let model: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === "--model") {
+      model = argv[++i];
+      if (!model || model.startsWith("--")) return null;
+    } else if (arg.startsWith("--model=")) {
+      model = arg.slice("--model=".length);
+      if (!model) return null;
+    } else if (arg.startsWith("--") || file) {
+      return null;
+    } else {
+      file = arg;
+    }
+  }
+  return { ...(file ? { file } : {}), ...(model ? { model } : {}) };
+}
+
 async function main(): Promise<void> {
-  const file = process.argv[2];
+  const args = parseArgs(process.argv.slice(2));
+  if (!args) {
+    console.error(USAGE);
+    process.exitCode = 2;
+    return;
+  }
+  const { file, model } = args;
   if (!file && process.stdin.isTTY) {
-    console.error("Использование: npm run generate -- <input.json>");
+    console.error(USAGE);
     process.exitCode = 2;
     return;
   }
@@ -32,7 +61,8 @@ async function main(): Promise<void> {
   // Вход проверяется до вызова модели.
   const data = parseInputJson(raw);
   normalizeInput(data);
-  const card = await generateCard(data as ProductInput);
+  const input = (model ? { ...(data as ProductInput), model } : data) as ProductInput;
+  const card = await generateCard(input);
   const json = JSON.stringify(card, null, 2) + "\n";
   if (!file) {
     process.stdout.write(json);
