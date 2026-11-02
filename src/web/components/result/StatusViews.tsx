@@ -26,7 +26,14 @@ export function LoadingState({ startedAt }: { startedAt: number }) {
       <p className="flex items-center gap-2 font-medium">
         <Loader2 className="size-4 animate-spin" /> Генерация карточки… {Math.floor(elapsed / 1000)} с
       </p>
-      <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
+      <div
+        role="progressbar"
+        aria-label="Ход генерации"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="h-2 overflow-hidden rounded-full bg-muted"
+      >
         <div className="h-full bg-primary transition-all" style={{ width: `${percent}%` }} />
       </div>
       <p className="text-muted-foreground">Обычно занимает до минуты.</p>

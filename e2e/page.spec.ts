@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { NO_DATA, type ProductCard } from "../src/contract";
 import { STUB_CARD } from "../src/core/stub-card";
+import { cardToMarkdown, commercialText, queriesText, specsText } from "../src/web/lib/card-text";
+import { readFile } from "node:fs/promises";
 
 test.use({ permissions: ["clipboard-read", "clipboard-write"] });
 
@@ -24,7 +26,17 @@ test("форма → карточка на заглушке: блоки, счё�
   await page.getByLabel("Значение 1").fill("100 мм");
   await page.getByRole("button", { name: "Добавить строку" }).click();
   await expect(page.getByLabel("Характеристика 2")).toBeVisible();
+  await page.getByLabel("Характеристика 2").fill("Класс точности");
+  await page.getByLabel("Значение 2").fill("1,5");
+  await page.getByLabel("Описание или текст паспорта").fill("Корпус 100 мм.");
+  const req = page.waitForRequest("**/api/generate");
   await generate(page);
+  expect((await req).postDataJSON()).toEqual({
+    name: "Манометр МП-100",
+    manufacturer: "Союз-Прибор",
+    specs: { "Диаметр корпуса": "100 мм", "Класс точности": "1,5" },
+    description: "Корпус 100 мм.",
+  });
 
   for (const name of ["SEO-заголовок", "SEO-описание", "Характеристики", "Поисковые запросы", "Коммерческий блок"]) {
     await expect(block(page, name)).toBeVisible();
@@ -39,7 +51,17 @@ test("форма → карточка на заглушке: блоки, счё�
   const issues = page.getByRole("region", { name: "Требует уточнения" });
   await expect(issues).toContainText("Класс точности");
   await expect(page.getByRole("region", { name: "Предупреждения" })).toContainText("заглушка");
-  await expect(page.getByTestId("meta")).toContainText("Модель: stub");
+  await expect(page.getByTestId("meta")).toHaveText("Модель: stub · Провайдер: stub · Попыток: 0 · Время: 0.0 с");
+
+  await expect(block(page, "SEO-заголовок")).toContainText(STUB_CARD.seo_title);
+  await expect(block(page, "SEO-описание")).toContainText(STUB_CARD.seo_description);
+  for (const q of STUB_CARD.search_queries) await expect(block(page, "Поисковые запросы")).toContainText(q);
+  const c = STUB_CARD.commercial;
+  for (const t of [...c.audience, ...c.tasks, ...c.advantages.map((a) => a.text), ...c.manager_questions, ...c.limitations]) {
+    await expect(block(page, "Коммерческий блок")).toContainText(t);
+  }
+  await expect(block(page, "SEO-заголовок").getByTestId("counter")).not.toHaveClass(/text-destructive/);
+  await expect(block(page, "Характеристики").getByTestId("no-data").first()).toHaveClass(/bg-amber-50/);
 });
 
 test("копирование блока в буфер одним кликом", async ({ page, context, baseURL }) => {
@@ -47,12 +69,34 @@ test("копирование блока в буфер одним кликом", 
   await page.goto("/");
   await page.getByRole("button", { name: "Подставить пример" }).click();
   await generate(page);
-  await page.getByRole("button", { name: "Копировать: SEO-заголовок" }).click();
-  await expect(page.getByText("Скопировано: SEO-заголовок")).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(STUB_CARD.seo_title);
-  await page.getByRole("button", { name: "Копировать: Характеристики" }).click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("Диаметр корпуса: 100 мм");
+  await expectAllBlocksCopy(page);
 });
+
+test("копирование работает и без Clipboard API (http не на localhost)", async ({ page, context, baseURL }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL });
+  await page.addInitScript(() => Object.defineProperty(window, "isSecureContext", { value: false }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Подставить пример" }).click();
+  await generate(page);
+  await expectAllBlocksCopy(page);
+});
+
+async function expectAllBlocksCopy(page: Page) {
+  const expected: [string, string][] = [
+    ["SEO-заголовок", STUB_CARD.seo_title],
+    ["SEO-описание", STUB_CARD.seo_description],
+    ["Характеристики", specsText(STUB_CARD.specs)],
+    ["Поисковые запросы", queriesText(STUB_CARD.search_queries)],
+    ["Коммерческий блок", commercialText(STUB_CARD.commercial)],
+  ];
+  expect(specsText(STUB_CARD.specs)).toContain("Диаметр корпуса: 100 мм");
+  expect(commercialText(STUB_CARD.commercial)).toContain(STUB_CARD.commercial.manager_questions[0]);
+  for (const [name, text] of expected) {
+    await page.getByRole("button", { name: `Копировать: ${name}` }).click();
+    await expect(page.getByText(`Скопировано: ${name}`)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+  }
+}
 
 test("счётчики краснеют вне нормы", async ({ page }) => {
   await mockCard(page, { ...STUB_CARD, seo_title: "М".repeat(71), seo_description: "Короткое описание." });
@@ -61,7 +105,24 @@ test("счётчики краснеют вне нормы", async ({ page }) => 
   await generate(page);
   await expect(block(page, "SEO-заголовок").getByTestId("counter")).toHaveText("71/70");
   await expect(block(page, "SEO-заголовок").getByTestId("counter")).toHaveAttribute("data-invalid", "true");
+  await expect(block(page, "SEO-заголовок").getByTestId("counter")).toHaveClass(/text-destructive/);
   await expect(block(page, "SEO-описание").getByTestId("counter")).toHaveAttribute("data-invalid", "true");
+  await expect(block(page, "SEO-описание").getByTestId("counter")).toHaveClass(/text-destructive/);
+});
+
+test("счётчик описания: 1200 — норма, 1201 — превышение", async ({ page }) => {
+  let len = 1200;
+  await page.route("**/api/generate", (route) => route.fulfill({ json: { ...STUB_CARD, seo_description: "о".repeat(len) } }));
+  await page.goto("/");
+  await page.getByLabel("Название").fill("Манометр");
+  await generate(page);
+  const counter = block(page, "SEO-описание").getByTestId("counter");
+  await expect(counter).toHaveText("1200 симв., норма 800–1200");
+  await expect(counter).toHaveAttribute("data-invalid", "false");
+  len = 1201;
+  await generate(page);
+  await expect(counter).toHaveText("1201 симв., норма 800–1200");
+  await expect(counter).toHaveAttribute("data-invalid", "true");
 });
 
 test("вкладка JSON: валидный ввод уходит на API", async ({ page }) => {
@@ -126,10 +187,14 @@ test("загрузка показывает прогресс", async ({ page }) 
     await gate;
     await route.fulfill({ json: STUB_CARD });
   });
+  await page.clock.install();
   await page.goto("/");
   await page.getByLabel("Название").fill("Манометр");
   await generate(page);
-  await expect(page.getByRole("status")).toContainText("Генерация карточки");
+  await expect(page.getByRole("status")).toContainText("Генерация карточки… 0 с");
+  await page.clock.runFor(30_000);
+  await expect(page.getByRole("status")).toContainText("Генерация карточки… 30 с");
+  await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
   await expect(page.getByRole("button", { name: "Генерация…" })).toBeDisabled();
   release();
   await expect(block(page, "SEO-заголовок")).toBeVisible();
@@ -141,8 +206,13 @@ test("скачивание .json и .md", async ({ page }) => {
   await generate(page);
   const [json] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Скачать .json" }).click()]);
   expect(json.suggestedFilename()).toBe("card.json");
+  expect(JSON.parse(await readFile(await json.path(), "utf8"))).toEqual(STUB_CARD);
   const [md] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Скачать .md" }).click()]);
   expect(md.suggestedFilename()).toBe("card.md");
+  const mdText = await readFile(await md.path(), "utf8");
+  expect(mdText).toBe(cardToMarkdown(STUB_CARD));
+  expect(mdText).toContain(STUB_CARD.seo_description);
+  expect(mdText).toContain("| Диаметр корпуса | 100 мм |");
 });
 
 test("ширина телефона: без горизонтальной прокрутки", async ({ page }) => {

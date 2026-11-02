@@ -1,4 +1,4 @@
-/** Единственный модуль вызова API. Типы — из общего контракта. */
+/** Единственный модуль вызова API. Типы — из общего контракта. Не класть под src/web/api/: в dev этот путь проксируется на сервер. */
 import { ApiErrorSchema, ProductCardSchema, type ProductCard, type ProductInput } from "../../contract";
 
 export class ApiClientError extends Error {

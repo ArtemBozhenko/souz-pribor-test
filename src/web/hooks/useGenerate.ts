@@ -1,7 +1,7 @@
 /** Состояние запроса генерации: пусто → загрузка → результат | ошибка. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProductCard, ProductInput } from "../../contract";
-import { ApiClientError, generateCard } from "../api/client";
+import { ApiClientError, generateCard } from "../lib/api-client";
 
 export type GenerateState =
   | { status: "idle" }
