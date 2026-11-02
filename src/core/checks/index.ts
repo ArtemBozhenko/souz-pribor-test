@@ -184,7 +184,7 @@ export function findInputContradictions(input: NormalizedInput): string[] {
   const b = ip(desc);
   // Расхождение — любые два разных IP во входе, даже если одно из значений совпало (ТМ-520Р: IP54 в таблице, IP65 и IP54 в описании).
   if (a.size && b.size && new Set([...a, ...b]).size > 1) {
-    out.push(`Степень защиты расходится: в характеристиках IP${[...a].join("/")}, в описании IP${[...b].join("/")}.`);
+    out.push(`Степень защиты расходится: в характеристиках ${[...a].map((x) => `IP${x}`).join(", ")}, в описании ${[...b].map((x) => `IP${x}`).join(", ")}.`);
   }
   const cls = (s: string) =>
     new Set([...normalizeText(s).matchAll(/класс(?:а)?(?: точности)?\s*(\d+(?:\.\d+)?)/g)].map((m) => String(Number(m[1]))));
