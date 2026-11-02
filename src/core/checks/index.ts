@@ -155,7 +155,11 @@ export function scrubUnverified(card: ModelCard, violations: Violation[], idx: I
   const bad = new Set(violations.flatMap((x) => ("specIndex" in x ? [x.specIndex] : [])));
   const ok = (t: string) => unknownNumbers(t, idx).length === 0;
   const sentences = card.seo_description.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) ?? [card.seo_description];
-  const title = card.seo_title.split(/(?=,)|(?<=—)/).filter(ok).join("").replace(/[,\s—]+$/, "").trim();
+  // Title чистится только при нарушении в нём самом. Запятая между цифрами («1,6 МПа», «ДИ1,0-111») — не граница фрагмента.
+  const titleBad = violations.some((x) => "field" in x && x.field === "seo_title" && x.kind === "text_number");
+  const title = titleBad
+    ? card.seo_title.split(/(?=(?<!\d),|,(?!\d))|(?<=—)/).filter(ok).join("").replace(/[,\s—]+$/, "").trim()
+    : card.seo_title;
   return {
     seo_title: title || fallbackTitle,
     seo_description: sentences.filter(ok).join("").trim() || NO_DATA,
