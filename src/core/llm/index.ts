@@ -42,9 +42,17 @@ function wrap(err: unknown): CoreError {
   return mapProviderError(err);
 }
 
+/**
+ * SDK Anthropic сам дописывает `/v1/messages`, поэтому общий для Zen адрес `…/zen/v1`
+ * приводится к `…/zen`: один LLM_BASE_URL годится для обоих провайдеров.
+ */
+export function anthropicBaseUrl(base: string | undefined): string | null {
+  return base ? base.replace(/\/+$/, "").replace(/\/v1$/, "") : null;
+}
+
 export function createAnthropicClient(cfg: LlmConfig, sdk?: Anthropic): LlmClient {
   const client =
-    sdk ?? new Anthropic({ apiKey: cfg.LLM_API_KEY, baseURL: cfg.LLM_BASE_URL ?? null, ...SDK_OPTIONS });
+    sdk ?? new Anthropic({ apiKey: cfg.LLM_API_KEY, baseURL: anthropicBaseUrl(cfg.LLM_BASE_URL), ...SDK_OPTIONS });
   const structured = cfg.LLM_STRUCTURED !== "off";
   return {
     provider: "anthropic",

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { describe, expect, it } from "vitest";
 import { CoreError, mapProviderError, parseInputJson, renderMarkdown } from "..";
-import { createAnthropicClient, createOpenAiCompatibleClient, readLlmConfig } from "../llm";
+import { anthropicBaseUrl, createAnthropicClient, createOpenAiCompatibleClient, readLlmConfig } from "../llm";
 import { detectDeviceType, findMissingFields, normalizeInput } from "../input";
 import { STUB_CARD } from "../stub-card";
 
@@ -93,6 +93,14 @@ describe("маппинг ошибок API", () => {
     await createAnthropicClient(readLlmConfig({ LLM_API_KEY: "k", LLM_EFFORT: "low" }), sdk).complete({ system: "s", messages: [] });
     expect(body).not.toHaveProperty("temperature");
     expect(body.output_config).toMatchObject({ effort: "low", format: { type: "json_schema" } });
+  });
+});
+
+describe("адрес Zen", () => {
+  it("…/zen/v1 для anthropic превращается в …/zen (SDK сам добавит /v1/messages)", () => {
+    expect(anthropicBaseUrl("https://opencode.ai/zen/v1")).toBe("https://opencode.ai/zen");
+    expect(anthropicBaseUrl("https://opencode.ai/zen/v1/")).toBe("https://opencode.ai/zen");
+    expect(anthropicBaseUrl(undefined)).toBeNull();
   });
 });
 
