@@ -90,6 +90,24 @@ describe("генерация с подменённой моделью", () => {
     expect((await generateCard(GAUGE_INPUT, { client: over, ...quiet })).meta.attempts).toBe(2);
   });
 
+  it("число из входа с чужой единицей в тексте и в value без unit → нарушение", async () => {
+    const bad = goodCard();
+    bad.seo_description = (bad.seo_description as string) + " Давление 100 МПа.";
+    (bad.specs as Array<Record<string, unknown>>)[2] = {
+      group: "Конструкция", name: "Диаметр корпуса", value: "100 МПа", source: "input", source_quote: "100 мм",
+    };
+    const card = await generateCard(GAUGE_INPUT, { client: fakeClient([bad]), ...quiet });
+    expect(card.seo_description).not.toContain("100 МПа");
+    expect(card.specs.find((s) => s.name === "Диаметр корпуса")!.value).toBe(NO_DATA);
+  });
+
+  it("title из одних выдуманных чисел после повторов → черновик с названием из входа", async () => {
+    const client = fakeClient([{ ...goodCard(), seo_title: "999999" }]);
+    const card = await generateCard(GAUGE_INPUT, { client, ...quiet });
+    expect(card.seo_title).toBe(GAUGE_INPUT.name);
+    expect(card.warnings.some((w) => w.code === "unverified_text")).toBe(true);
+  });
+
   it("число из входа с чужой единицей (100 мм → 100 МПа) → «данных нет»", async () => {
     const bad = goodCard();
     (bad.specs as Array<Record<string, unknown>>)[2] = {

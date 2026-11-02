@@ -65,8 +65,22 @@ function numberWithUnit(text: string, n: string, unit: string): boolean {
   return false;
 }
 
+/** Единицы, по которым ловится подмена «100 мм» → «100 МПа» (после normalizeText). */
+const UNIT_RE = /(\d+(?:\.\d+)?)\s?(мпа|кпа|па|бар|кгс\/см2|кгс\/см²|мм рт\.? ?ст|мм|см|м|°c|°с|ма|мв|в|вт|ом|гц|%)(?![а-яa-z])/g;
+
+/** Пары «число единица» из текста, которых нет во входе. */
+function unknownPairs(s: string, idx: InputIndex): string[] {
+  const out: string[] = [];
+  for (const m of normalizeText(s).matchAll(UNIT_RE)) {
+    const n = String(Number(m[1]));
+    if (!numberWithUnit(idx.text, n, m[2]!)) out.push(`${n} ${m[2]}`);
+  }
+  return out;
+}
+
 function unknownNumbers(s: string, idx: InputIndex): string[] {
-  return [...new Set(extractNumbers(s).filter((n) => !idx.numbers.has(n)))];
+  const nums = extractNumbers(s).filter((n) => !idx.numbers.has(n));
+  return [...new Set([...nums, ...unknownPairs(s, idx)])];
 }
 
 export function checkCard(card: ModelCard, idx: InputIndex): Violation[] {
@@ -88,7 +102,7 @@ export function checkCard(card: ModelCard, idx: InputIndex): Violation[] {
     const unit = spec.unit?.trim();
     const nums = extractNumbers(spec.value);
     const last = nums.at(-1);
-    if (unit && last !== undefined && !numberWithUnit(idx.text, last, normalizeText(unit))) {
+    if (unit && last !== undefined && !numberWithUnit(idx.text, last, normalizeText(unit)) && !unknownPairs(spec.value, idx).length) {
       v.push({
         kind: "spec_number",
         specIndex: i,
@@ -137,13 +151,13 @@ export function checkCard(card: ModelCard, idx: InputIndex): Violation[] {
  * Убирает неподтверждённое: характеристика → «данных нет»; в описании выбрасывается предложение
  * с выдуманным числом; в title — фрагмент между запятыми; в списках — весь пункт.
  */
-export function scrubUnverified(card: ModelCard, violations: Violation[], idx: InputIndex): ModelCard {
+export function scrubUnverified(card: ModelCard, violations: Violation[], idx: InputIndex, fallbackTitle: string): ModelCard {
   const bad = new Set(violations.flatMap((x) => ("specIndex" in x ? [x.specIndex] : [])));
   const ok = (t: string) => unknownNumbers(t, idx).length === 0;
   const sentences = card.seo_description.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) ?? [card.seo_description];
   const title = card.seo_title.split(/(?=,)|(?<=—)/).filter(ok).join("").replace(/[,\s—]+$/, "").trim();
   return {
-    seo_title: title || card.seo_title.replace(/\d+(?:[.,]\d+)?/g, "").trim(),
+    seo_title: title || fallbackTitle,
     seo_description: sentences.filter(ok).join("").trim() || NO_DATA,
     specs: card.specs.map((s, i) => (bad.has(i) ? { group: s.group, name: s.name, value: NO_DATA, source: "missing" as const } : s)),
     search_queries: card.search_queries.filter(ok),

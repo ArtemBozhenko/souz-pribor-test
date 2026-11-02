@@ -123,7 +123,7 @@ export async function runPipeline(rawInput: unknown, deps: GenerateDeps): Promis
     });
   }
   // Ответ последней попытки мог не разобраться: тогда берём последнюю разобранную карточку и её нарушения.
-  const final = scrubUnverified(card, violations, idx);
+  const final = scrubUnverified(card, violations, idx, input.name.slice(0, 70));
   for (const v of violations) {
     if (v.kind === "quote" || v.kind === "spec_number") {
       warnings.push({ code: "unverified_value", message: `${v.message} Значение заменено на «${NO_DATA}».` });
