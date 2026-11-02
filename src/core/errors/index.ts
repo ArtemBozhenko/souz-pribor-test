@@ -4,6 +4,7 @@ import type { ApiError } from "../../contract";
 export type CoreErrorCode =
   | "invalid_json"
   | "invalid_input"
+  | "unsupported_model"
   | "llm_not_configured"
   | "llm_auth"
   | "llm_rate_limit"
@@ -20,6 +21,7 @@ export type CoreErrorCode =
 export const HTTP_STATUS: Record<CoreErrorCode, number> = {
   invalid_json: 400,
   invalid_input: 400,
+  unsupported_model: 400,
   llm_not_configured: 500,
   llm_auth: 502,
   llm_rate_limit: 503,

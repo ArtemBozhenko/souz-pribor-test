@@ -16,10 +16,11 @@ import {
 import {
   ApiErrorSchema,
   HealthSchema,
+  ModelsResponseSchema,
   ProductCardSchema,
   ProductInputSchema,
 } from "../contract";
-import { generateCard, type GenerateCard } from "../core";
+import { generateCard, listModels, readLlmConfig, type GenerateCard } from "../core";
 import { apiError, mapCoreError } from "./errors";
 
 export interface AppOptions {
@@ -27,6 +28,8 @@ export interface AppOptions {
   /** Каталог собранного фронта; если есть — отдаётся статикой. */
   webDir?: string;
   logger?: boolean;
+  /** Окружение с настройками LLM для списка моделей; по умолчанию — process.env. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export async function buildApp(options: AppOptions = {}): Promise<FastifyInstance> {
@@ -70,6 +73,12 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   api.get("/api/health", { schema: { response: { 200: HealthSchema } } }, async () => ({
     ok: true as const,
   }));
+
+  api.get(
+    "/api/models",
+    { schema: { response: { 200: ModelsResponseSchema, "5xx": ApiErrorSchema } } },
+    async () => listModels(readLlmConfig(options.env)),
+  );
 
   api.post(
     "/api/generate",

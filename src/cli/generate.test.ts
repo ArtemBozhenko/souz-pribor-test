@@ -32,4 +32,19 @@ describe("CLI generate", () => {
     expect((err as { code: number }).code).toBe(1);
     expect((err as { stderr: string }).stderr).toMatch(/не корректный JSON/);
   }, 30_000);
+
+  it("--model: модель из списка попадает в карточку, неизвестная — код 1 и unsupported_model", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "cli-"));
+    const input = path.join(dir, "gauge.json");
+    await writeFile(input, JSON.stringify({ name: "Манометр МП-100" }));
+    const menv = { ...env, LLM_MODEL: "claude-sonnet-5-5", LLM_MODELS: "claude-sonnet-5-5,claude-haiku-5-5" };
+    await run(tsx, [cli, "--model", "claude-haiku-5-5", input], { env: menv, cwd: dir });
+    const card = JSON.parse(await readFile(path.join(dir, "gauge.card.json"), "utf8"));
+    expect(card.meta.model).toBe("claude-haiku-5-5");
+    const err = await run(tsx, [cli, "--model", "gpt-4o", input], { env: menv, cwd: dir }).catch(
+      (e: { code: number; stderr: string }) => e,
+    );
+    expect((err as { code: number }).code).toBe(1);
+    expect((err as { stderr: string }).stderr).toMatch(/unsupported_model.*не поддерживается/);
+  }, 30_000);
 });

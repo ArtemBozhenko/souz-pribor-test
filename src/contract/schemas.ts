@@ -13,6 +13,12 @@ export const ProductInputSchema = z
     manufacturer: z.string().trim().optional(),
     specs: z.record(z.string(), z.string()).optional(),
     description: z.string().optional(),
+    model: z
+      .string()
+      .trim()
+      .min(1, "Укажите модель или уберите поле model")
+      .optional()
+      .describe("Модель из GET /api/models; без поля — модель по умолчанию"),
   })
   .describe("Исходные данные о товаре");
 export type ProductInput = z.infer<typeof ProductInputSchema>;
@@ -91,6 +97,20 @@ export const ApiErrorSchema = z.object({
   }),
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
+
+export const ModelOptionSchema = z.object({
+  id: z.string().min(1).describe("Идентификатор модели у провайдера"),
+  label: z.string().min(1).describe("Подпись для списка"),
+});
+export type ModelOption = z.infer<typeof ModelOptionSchema>;
+
+export const ModelsResponseSchema = z
+  .object({
+    default: z.string().min(1).describe("Модель, которая берётся без поля model"),
+    models: z.array(ModelOptionSchema).min(1),
+  })
+  .describe("Модели, доступные для генерации");
+export type ModelsResponse = z.infer<typeof ModelsResponseSchema>;
 
 export const HealthSchema = z.object({ ok: z.literal(true) });
 

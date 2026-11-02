@@ -86,6 +86,49 @@ describe("маппинг ошибок API", () => {
     }
   });
 
+  it("max_tokens: лимит из LLM_MAX_TOKENS (по умолчанию 16000) уходит в запрос, обрыв — русское сообщение с моделью и лимитом", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const sdk = new Anthropic({ apiKey: "k" });
+    sdk.messages.create = ((b: Record<string, unknown>) => {
+      bodies.push(b);
+      return Promise.resolve({ stop_reason: "max_tokens", content: [{ type: "text", text: '{"seo_title": "обрыв' }] });
+    }) as never;
+    const env = { LLM_API_KEY: "k", LLM_MODEL: "claude-haiku-5-5" };
+    const err = await createAnthropicClient(readLlmConfig(env), sdk)
+      .complete({ system: "s", messages: [] })
+      .catch((e: unknown) => e);
+    expect(bodies[0]!.max_tokens).toBe(16000);
+    expect(err).toMatchObject({
+      code: "llm_truncated",
+      httpStatus: 502,
+      details: { model: "claude-haiku-5-5", max_tokens: 16000 },
+    });
+    expect((err as Error).message).toMatch(/claude-haiku-5-5 не уложилась в лимит ответа \(16000 токенов\).*LLM_MAX_TOKENS/);
+
+    await createAnthropicClient(readLlmConfig({ ...env, LLM_MAX_TOKENS: "24000" }), sdk)
+      .complete({ system: "s", messages: [] })
+      .catch(() => {});
+    expect(bodies[1]!.max_tokens).toBe(24000);
+    expect(readLlmConfig({ LLM_MAX_TOKENS: "" }).LLM_MAX_TOKENS).toBe(16000);
+    expect(() => readLlmConfig({ LLM_MAX_TOKENS: "10" })).toThrow();
+  });
+
+  it("openai-compatible: finish_reason=length → тот же llm_truncated, лимит из LLM_MAX_TOKENS", async () => {
+    let body: Record<string, unknown> = {};
+    const sdk = new OpenAI({ apiKey: "k" });
+    sdk.chat.completions.create = ((b: Record<string, unknown>) => {
+      body = b;
+      const p = Promise.resolve({ data: { choices: [{ finish_reason: "length", message: { content: "{" } }] }, request_id: null });
+      return { withResponse: () => p };
+    }) as never;
+    const cfg = readLlmConfig({ LLM_API_KEY: "k", LLM_PROVIDER: "openai-compatible", LLM_MODEL: "glm-4.5-flash", LLM_MAX_TOKENS: "12000" });
+    await expect(createOpenAiCompatibleClient(cfg, sdk).complete({ system: "s", messages: [] })).rejects.toMatchObject({
+      code: "llm_truncated",
+      message: expect.stringMatching(/glm-4\.5-flash не уложилась в лимит ответа \(12000 токенов\)/),
+    });
+    expect(body.max_tokens).toBe(12000);
+  });
+
   it("anthropic: без temperature, с output_config", async () => {
     let body: Record<string, unknown> = {};
     const sdk = new Anthropic({ apiKey: "k" });

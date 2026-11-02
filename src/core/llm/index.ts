@@ -1,7 +1,7 @@
 /**
  * Ядро: адаптеры провайдеров.
  * anthropic — @anthropic-ai/sdk (/v1/messages), openai-compatible — openai (/chat/completions).
- * Транспортные повторы делает SDK (max_retries=3, таймаут 60 с); смысловые — конвейер.
+ * Транспортные повторы делает SDK (max_retries=3, таймаут 180 с); смысловые — конвейер.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
@@ -9,7 +9,7 @@ import { CoreError, mapProviderError } from "../errors";
 import { MODEL_OUTPUT_JSON_SCHEMA } from "./output-schema";
 import type { LlmConfig } from "./config";
 
-export { readLlmConfig, type LlmConfig } from "./config";
+export { listModels, readLlmConfig, type LlmConfig, type ModelList, type ModelOption } from "./config";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -27,8 +27,17 @@ export interface LlmClient {
   complete(request: { system: string; messages: ChatMessage[] }): Promise<LlmResponse>;
 }
 
-export const SDK_OPTIONS = { maxRetries: 3, timeout: 60_000 } as const;
-const MAX_TOKENS = 8000;
+/** Таймаут с запасом на длинный ответ: 16 тыс. токенов у быстрых моделей идут около полутора минут. */
+export const SDK_OPTIONS = { maxRetries: 3, timeout: 180_000 } as const;
+
+function truncated(cfg: LlmConfig, requestId: string | undefined): CoreError {
+  return new CoreError(
+    "llm_truncated",
+    `Модель ${cfg.LLM_MODEL} не уложилась в лимит ответа (${cfg.LLM_MAX_TOKENS} токенов). ` +
+      "Повторите запрос, выберите другую модель или увеличьте LLM_MAX_TOKENS.",
+    { requestId, details: { model: cfg.LLM_MODEL, max_tokens: cfg.LLM_MAX_TOKENS } },
+  );
+}
 
 function isTimeout(err: unknown): boolean {
   return err instanceof Anthropic.APIConnectionTimeoutError || err instanceof OpenAI.APIConnectionTimeoutError;
@@ -63,7 +72,7 @@ export function createAnthropicClient(cfg: LlmConfig, sdk?: Anthropic): LlmClien
         // temperature не передаём: на Claude 5.x он даёт 400.
         res = await client.messages.create({
           model: cfg.LLM_MODEL,
-          max_tokens: MAX_TOKENS,
+          max_tokens: cfg.LLM_MAX_TOKENS,
           system,
           messages,
           ...(cfg.LLM_EFFORT || structured
@@ -83,7 +92,7 @@ export function createAnthropicClient(cfg: LlmConfig, sdk?: Anthropic): LlmClien
         throw new CoreError("llm_refusal", "Модель отказалась отвечать на запрос.", { requestId });
       }
       if (res.stop_reason === "max_tokens") {
-        throw new CoreError("llm_truncated", "Ответ модели обрезан по лимиту токенов.", { requestId });
+        throw truncated(cfg, requestId);
       }
       const text = res.content
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -108,7 +117,7 @@ export function createOpenAiCompatibleClient(cfg: LlmConfig, sdk?: OpenAI): LlmC
         const { data, request_id } = await client.chat.completions
           .create({
             model: cfg.LLM_MODEL,
-            max_tokens: MAX_TOKENS,
+            max_tokens: cfg.LLM_MAX_TOKENS,
             messages: [{ role: "system", content: system }, ...messages],
             ...(structured
               ? {
@@ -127,7 +136,7 @@ export function createOpenAiCompatibleClient(cfg: LlmConfig, sdk?: OpenAI): LlmC
       }
       const choice = res.choices[0];
       if (choice?.finish_reason === "length") {
-        throw new CoreError("llm_truncated", "Ответ модели обрезан по лимиту токенов.", { requestId });
+        throw truncated(cfg, requestId);
       }
       if (choice?.finish_reason === "content_filter" || choice?.message.refusal) {
         throw new CoreError("llm_refusal", "Модель отказалась отвечать на запрос.", { requestId });

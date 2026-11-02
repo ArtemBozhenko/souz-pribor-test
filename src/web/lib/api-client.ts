@@ -1,5 +1,12 @@
 /** Единственный модуль вызова API. Типы — из общего контракта. Не класть под src/web/api/: в dev этот путь проксируется на сервер. */
-import { ApiErrorSchema, ProductCardSchema, type ProductCard, type ProductInput } from "../../contract";
+import {
+  ApiErrorSchema,
+  ModelsResponseSchema,
+  ProductCardSchema,
+  type ModelsResponse,
+  type ProductCard,
+  type ProductInput,
+} from "../../contract";
 
 export class ApiClientError extends Error {
   constructor(
@@ -46,4 +53,16 @@ export async function generateCard(input: ProductInput, signal?: AbortSignal): P
     throw new ApiClientError("Ответ сервера не соответствует формату карточки", "bad_response", res.status);
   }
   return card.data;
+}
+
+/** Список моделей с сервера; при любой ошибке — null (генерация идёт на модели по умолчанию). */
+export async function fetchModels(signal?: AbortSignal): Promise<ModelsResponse | null> {
+  try {
+    const res = await fetch("/api/models", { signal });
+    if (!res.ok) return null;
+    const parsed = ModelsResponseSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }

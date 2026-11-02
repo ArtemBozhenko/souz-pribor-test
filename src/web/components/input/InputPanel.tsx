@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import type { ProductInput } from "../../../contract";
+import type { ModelOption, ProductInput } from "../../../contract";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,9 +19,13 @@ const EMPTY_FORM: FormValues = { name: "", manufacturer: "", specs: [{ key: "", 
 interface Props {
   loading: boolean;
   onSubmit: (input: ProductInput) => void;
+  /** Модели с сервера; null — список ещё не загружен. */
+  models: ModelOption[] | null;
+  model: string | undefined;
+  onModelChange: (id: string) => void;
 }
 
-export function InputPanel({ loading, onSubmit }: Props) {
+export function InputPanel({ loading, onSubmit, models, model, onModelChange }: Props) {
   const [tab, setTab] = useState<"form" | "json">("form");
   const [form, setForm] = useState<FormValues>(EMPTY_FORM);
   const [json, setJson] = useState("");
@@ -150,10 +154,27 @@ export function InputPanel({ loading, onSubmit }: Props) {
             </p>
           )}
 
-          <Button type="submit" className="mt-4 w-full sm:w-auto" disabled={loading}>
-            {loading && <Loader2 className="size-4 animate-spin" />}
-            {loading ? "Генерация…" : "Сгенерировать"}
-          </Button>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <Button type="submit" className="w-full sm:w-auto" disabled={loading}>
+              {loading && <Loader2 className="size-4 animate-spin" />}
+              {loading ? "Генерация…" : "Сгенерировать"}
+            </Button>
+            {models && model && (
+              <select
+                aria-label="Модель"
+                className="h-9 w-full min-w-0 sm:min-w-64 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-50 sm:flex-1"
+                value={model}
+                disabled={loading}
+                onChange={(e) => onModelChange(e.target.value)}
+              >
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </form>
       </CardContent>
     </Card>
