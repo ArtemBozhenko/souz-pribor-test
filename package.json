@@ -5,7 +5,7 @@
   "description": "AI-помощник для товарных описаний Союз-Прибор",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"tsx watch src/server/main.ts\" \"vite\"",
