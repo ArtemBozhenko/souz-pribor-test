@@ -78,3 +78,18 @@ describe("#12: missing_fields сверяется с итоговыми хара�
     expect(out.missing_fields.map((m) => m.field)).toContain(TEMP);
   });
 });
+
+describe("противоречия во входе", () => {
+  it("ТМ-520Р: IP 54 в таблице, IP65 и IP54 в описании → warning input_contradiction", async () => {
+    const reply = card("Манометр виброустойчивый ТМ-520Р РОСМА", []);
+    const out = await generateCard(example("tm-520r.json"), { client: fakeClient([reply]), ...quiet });
+    const w = out.warnings.find((x) => x.code === "input_contradiction" && x.message.includes("Степень защиты"));
+    expect(w?.message).toMatch(/65/);
+  });
+
+  it("DM 02: IP нигде нет → предупреждения о степени защиты нет", async () => {
+    const reply = card("Манометр показывающий DM 02 Манотомь", []);
+    const out = await generateCard(example("dm02.json"), { client: fakeClient([reply]), ...quiet });
+    expect(out.warnings.some((x) => x.code === "input_contradiction")).toBe(false);
+  });
+});
