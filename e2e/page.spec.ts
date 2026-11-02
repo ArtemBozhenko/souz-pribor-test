@@ -224,3 +224,18 @@ test("ширина телефона: без горизонтальной про�
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("пример — реальный ТМ-520Р; на телефоне названия характеристик видны целиком", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Подставить пример" }).click();
+  await expect(page.getByLabel("Название")).toHaveValue("Манометр виброустойчивый ТМ-520Р");
+  const keys = page.getByLabel(/^Характеристика \d+$/);
+  await expect(keys).toHaveCount(16);
+  for (const key of await keys.all()) {
+    const clipped = await key.evaluate((el: HTMLTextAreaElement) => el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight + 1);
+    expect(clipped, await key.inputValue()).toBe(false);
+  }
+  // Многострочное значение не склеивается в одну строку.
+  await expect(page.getByLabel("Значение 3")).toHaveValue("0 - 100;\n-0,1 - 0;\n-0,1 - 24;");
+});

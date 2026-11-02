@@ -78,16 +78,20 @@ export function InputPanel({ loading, onSubmit }: Props) {
               <fieldset className="space-y-2">
                 <legend className="mb-1 text-sm font-medium">Характеристики</legend>
                 {form.specs.map((row, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input
+                  <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex">
+                    <Textarea
+                      rows={1}
+                      className="field-sizing-content min-h-9 resize-none py-1.5 sm:flex-1"
                       aria-label={`Характеристика ${i + 1}`}
                       placeholder="Параметр"
                       value={row.key}
                       onChange={(e) => updateSpec(i, { key: e.target.value })}
                     />
-                    <Input
+                    <Textarea
                       aria-label={`Значение ${i + 1}`}
                       placeholder="Значение"
+                      rows={1}
+                      className="field-sizing-content col-span-2 row-start-2 min-h-9 resize-none py-1.5 sm:col-span-1 sm:row-start-auto sm:flex-1"
                       value={row.value}
                       onChange={(e) => updateSpec(i, { value: e.target.value })}
                     />
@@ -95,7 +99,7 @@ export function InputPanel({ loading, onSubmit }: Props) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-9 shrink-0"
+                      className="h-9 shrink-0 sm:order-last"
                       aria-label={`Удалить строку ${i + 1}`}
                       onClick={() =>
                         update({

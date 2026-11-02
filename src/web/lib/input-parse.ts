@@ -1,5 +1,6 @@
 /** Разбор и проверка ввода на клиенте; ошибки — по-русски. */
 import { ProductInputSchema, type ProductInput } from "../../contract";
+import tm520r from "../../../fixtures/products/tm-520r-full.json";
 
 export type ParseResult = { ok: true; input: ProductInput } | { ok: false; error: string };
 
@@ -65,17 +66,8 @@ export function formToInput(form: FormValues): ParseResult {
   });
 }
 
-export const EXAMPLE_INPUT: ProductInput = {
-  name: "Манометр показывающий МП-100",
-  manufacturer: "Союз-Прибор",
-  specs: {
-    "Диаметр корпуса": "100 мм",
-    "Присоединение": "М20×1,5, радиальное",
-    "Рабочая среда": "жидкости, газы, пары",
-  },
-  description:
-    "Манометр для измерения избыточного давления неагрессивных к медным сплавам сред. Корпус 100 мм, трубчатая пружина.",
-};
+/** Пример — реальный товар из fixtures (ТМ-520Р, данные с souz-pribor.ru и РЭ). */
+export const EXAMPLE_INPUT: ProductInput = tm520r;
 
 export function inputToForm(input: ProductInput): FormValues {
   const specs = Object.entries(input.specs ?? {}).map(([key, value]) => ({ key, value }));
