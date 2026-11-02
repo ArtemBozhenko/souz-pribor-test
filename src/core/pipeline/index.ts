@@ -136,12 +136,15 @@ export async function runPipeline(rawInput: unknown, deps: GenerateDeps): Promis
   for (const c of findInputContradictions(input)) warnings.push({ code: "input_contradiction", message: c });
 
   // Обязательные поля шаблона, которых нет во входе, обязательно видны в карточке.
+  // Поле, которое модель нашла с подтверждённой цитатой (после проверок source остался input), не «требует уточнения».
   const names = new Set(final.specs.map((s) => normalizeText(s.name)));
-  for (const f of missing) {
+  const confirmed = new Set(final.specs.filter((s) => s.source === "input").map((s) => normalizeText(s.name)));
+  const stillMissing = missing.filter((f) => !confirmed.has(normalizeText(f.name)));
+  for (const f of stillMissing) {
     if (!names.has(normalizeText(f.name))) final.specs.push({ group: f.group, name: f.name, value: NO_DATA, source: "missing" });
   }
   const missingFields = new Map<string, string>();
-  for (const f of missing) missingFields.set(f.name, "Нет во входных данных");
+  for (const f of stillMissing) missingFields.set(f.name, "Нет во входных данных");
   for (const s of final.specs) {
     if (s.source === "missing" && !missingFields.has(s.name)) missingFields.set(s.name, "Нет во входных данных или не подтверждено");
   }

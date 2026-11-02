@@ -155,7 +155,11 @@ export function scrubUnverified(card: ModelCard, violations: Violation[], idx: I
   const bad = new Set(violations.flatMap((x) => ("specIndex" in x ? [x.specIndex] : [])));
   const ok = (t: string) => unknownNumbers(t, idx).length === 0;
   const sentences = card.seo_description.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) ?? [card.seo_description];
-  const title = card.seo_title.split(/(?=,)|(?<=—)/).filter(ok).join("").replace(/[,\s—]+$/, "").trim();
+  // Title чистится только при нарушении в нём самом. Запятая между цифрами («1,6 МПа», «ДИ1,0-111») — не граница фрагмента.
+  const titleBad = violations.some((x) => "field" in x && x.field === "seo_title" && x.kind === "text_number");
+  const title = titleBad
+    ? card.seo_title.split(/(?=(?<!\d),|,(?!\d))|(?<=—)/).filter(ok).join("").replace(/[,\s—]+$/, "").trim()
+    : card.seo_title;
   return {
     seo_title: title || fallbackTitle,
     seo_description: sentences.filter(ok).join("").trim() || NO_DATA,
@@ -178,8 +182,9 @@ export function findInputContradictions(input: NormalizedInput): string[] {
   const ip = (s: string) => new Set([...s.matchAll(/\bIP\s?(\d{2})\b/gi)].map((m) => m[1]!));
   const a = ip(specText);
   const b = ip(desc);
-  if (a.size && b.size && ![...a].some((x) => b.has(x))) {
-    out.push(`Степень защиты расходится: в характеристиках IP${[...a].join("/")}, в описании IP${[...b].join("/")}.`);
+  // Расхождение — любые два разных IP во входе, даже если одно из значений совпало (ТМ-520Р: IP54 в таблице, IP65 и IP54 в описании).
+  if (a.size && b.size && new Set([...a, ...b]).size > 1) {
+    out.push(`Степень защиты расходится: в характеристиках ${[...a].map((x) => `IP${x}`).join(", ")}, в описании ${[...b].map((x) => `IP${x}`).join(", ")}.`);
   }
   const cls = (s: string) =>
     new Set([...normalizeText(s).matchAll(/класс(?:а)?(?: точности)?\s*(\d+(?:\.\d+)?)/g)].map((m) => String(Number(m[1]))));
