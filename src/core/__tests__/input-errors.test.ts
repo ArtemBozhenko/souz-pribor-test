@@ -59,6 +59,7 @@ describe("маппинг ошибок API", () => {
     const client = createAnthropicClient(readLlmConfig({ LLM_API_KEY: "k" }), sdk);
     await expect(client.complete({ system: "s", messages: [{ role: "user", content: "u" }] })).rejects.toMatchObject({
       code: "llm_timeout",
+      message: expect.stringMatching(/Модель не ответила за отведённое время/),
     });
   });
 
@@ -71,6 +72,7 @@ describe("маппинг ошибок API", () => {
     const client = createOpenAiCompatibleClient(readLlmConfig({ LLM_API_KEY: "k", LLM_PROVIDER: "openai-compatible" }), sdk);
     await expect(client.complete({ system: "s", messages: [{ role: "user", content: "u" }] })).rejects.toMatchObject({
       code: "llm_timeout",
+      message: expect.stringMatching(/Модель не ответила за отведённое время/),
     });
   });
 

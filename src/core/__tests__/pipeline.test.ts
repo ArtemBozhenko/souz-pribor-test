@@ -72,9 +72,31 @@ describe("генерация с подменённой моделью", () => {
     expect(card.meta.attempts).toBe(1);
   });
 
-  it("битый JSON во всех попытках → ошибка invalid_output", async () => {
+  it("битый JSON во всех попытках → черновик из входа с warning, а не ошибка", async () => {
     const client = fakeClient(["нет", "нет", "нет"]);
-    await expect(generateCard(GAUGE_INPUT, { client, ...quiet })).rejects.toMatchObject({ code: "invalid_output" });
+    const card = await generateCard(GAUGE_INPUT, { client, ...quiet });
+    expect(client.calls).toHaveLength(3);
+    expect(ProductCardSchema.safeParse(card).success).toBe(true);
+    expect(card.warnings.some((w) => w.code === "invalid_output")).toBe(true);
+    expect(card.seo_title).toContain("ДМ 02");
+  });
+
+  it("title ровно 70 символов проходит, 71 — повтор", async () => {
+    const t70 = "Манометр показывающий ДМ 02 Манотомь " + "x".repeat(70 - 37);
+    expect(t70).toHaveLength(70);
+    const ok = fakeClient([{ ...goodCard(), seo_title: t70 }]);
+    expect((await generateCard(GAUGE_INPUT, { client: ok, ...quiet })).meta.attempts).toBe(1);
+    const over = fakeClient([{ ...goodCard(), seo_title: t70 + "y" }, goodCard()]);
+    expect((await generateCard(GAUGE_INPUT, { client: over, ...quiet })).meta.attempts).toBe(2);
+  });
+
+  it("число из входа с чужой единицей (100 мм → 100 МПа) → «данных нет»", async () => {
+    const bad = goodCard();
+    (bad.specs as Array<Record<string, unknown>>)[2] = {
+      group: "Конструкция", name: "Диаметр корпуса", value: "100", unit: "МПа", source: "input", source_quote: "100 мм",
+    };
+    const card = await generateCard(GAUGE_INPUT, { client: fakeClient([bad]), ...quiet });
+    expect(card.specs.find((s) => s.name === "Диаметр корпуса")!.value).toBe(NO_DATA);
   });
 
   it("выдуманное число в описании → warning «требует уточнения»", async () => {
@@ -82,6 +104,8 @@ describe("генерация с подменённой моделью", () => {
     bad.seo_description = (bad.seo_description as string) + " Срок службы 7 лет.";
     const card = await generateCard(GAUGE_INPUT, { client: fakeClient([bad]), ...quiet });
     expect(card.warnings.some((w) => w.code === "unverified_text" && w.message.includes("seo_description"))).toBe(true);
+    expect(card.seo_description).not.toContain("7 лет");
+    expect(card.seo_description).toContain("Манотомь");
   });
 
   it("пустое name → понятная ошибка до вызова модели", async () => {

@@ -56,6 +56,15 @@ export function indexInput(corpus: string): InputIndex {
   return { text: normalizeText(corpus), numbers: new Set(extractNumbers(corpus)) };
 }
 
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Есть ли во входе число n, за которым (через пробел или без) идёт единица. */
+function numberWithUnit(text: string, n: string, unit: string): boolean {
+  const re = new RegExp(`(^|[^\\d.])0*(\\d+(?:\\.\\d+)?)\\s?${escapeRe(unit)}`, "g");
+  for (const m of text.matchAll(re)) if (String(Number(m[2])) === n) return true;
+  return false;
+}
+
 function unknownNumbers(s: string, idx: InputIndex): string[] {
   return [...new Set(extractNumbers(s).filter((n) => !idx.numbers.has(n)))];
 }
@@ -73,6 +82,18 @@ export function checkCard(card: ModelCard, idx: InputIndex): Violation[] {
     const bad = unknownNumbers(`${spec.value} ${spec.unit ?? ""}`, idx);
     if (bad.length) {
       v.push({ kind: "spec_number", specIndex: i, message: `Характеристика «${spec.name}»: числа ${bad.join(", ")} отсутствуют во входных данных.` });
+      return;
+    }
+    // Число и единица должны стоять во входе вместе: «100 мм» не подтверждает «100 МПа».
+    const unit = spec.unit?.trim();
+    const nums = extractNumbers(spec.value);
+    const last = nums.at(-1);
+    if (unit && last !== undefined && !numberWithUnit(idx.text, last, normalizeText(unit))) {
+      v.push({
+        kind: "spec_number",
+        specIndex: i,
+        message: `Характеристика «${spec.name}»: во входных данных нет значения «${last} ${unit}».`,
+      });
     }
   });
 
@@ -112,12 +133,26 @@ export function checkCard(card: ModelCard, idx: InputIndex): Violation[] {
   return v;
 }
 
-/** Неподтверждённые характеристики → «данных нет». Возвращает новую карточку. */
-export function scrubUnverified(card: ModelCard, violations: Violation[]): ModelCard {
+/**
+ * Убирает неподтверждённое: характеристика → «данных нет»; в описании выбрасывается предложение
+ * с выдуманным числом; в title — фрагмент между запятыми; в списках — весь пункт.
+ */
+export function scrubUnverified(card: ModelCard, violations: Violation[], idx: InputIndex): ModelCard {
   const bad = new Set(violations.flatMap((x) => ("specIndex" in x ? [x.specIndex] : [])));
+  const ok = (t: string) => unknownNumbers(t, idx).length === 0;
+  const sentences = card.seo_description.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) ?? [card.seo_description];
+  const title = card.seo_title.split(/(?=,)|(?<=—)/).filter(ok).join("").replace(/[,\s—]+$/, "").trim();
   return {
-    ...card,
+    seo_title: title || card.seo_title.replace(/\d+(?:[.,]\d+)?/g, "").trim(),
+    seo_description: sentences.filter(ok).join("").trim() || NO_DATA,
     specs: card.specs.map((s, i) => (bad.has(i) ? { group: s.group, name: s.name, value: NO_DATA, source: "missing" as const } : s)),
+    search_queries: card.search_queries.filter(ok),
+    commercial: {
+      ...card.commercial,
+      tasks: card.commercial.tasks.filter(ok),
+      limitations: card.commercial.limitations.filter(ok),
+      advantages: card.commercial.advantages.filter((a) => ok(a.text)),
+    },
   };
 }
 

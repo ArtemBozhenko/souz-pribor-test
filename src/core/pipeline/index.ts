@@ -3,6 +3,7 @@ import { z } from "zod";
 import { CommercialSchema, NO_DATA, ProductCardSchema, SpecSchema, type ProductCard } from "../../contract";
 import { checkCard, findInputContradictions, indexInput, normalizeText, scrubUnverified, type ModelCard, type Violation } from "../checks";
 import { CoreError } from "../errors";
+import type { NormalizedInput } from "../input";
 import { DEVICE_LABEL, DEVICE_TEMPLATES, detectDeviceType, findMissingFields, inputCorpus, normalizeInput } from "../input";
 import type { ChatMessage, LlmClient } from "../llm";
 import { SYSTEM_PROMPT, buildRepairPrompt, buildUserPrompt } from "../prompts";
@@ -57,6 +58,17 @@ export function parseModelJson(text: string): { ok: true; card: ModelCard } | { 
   return { ok: true, card: parsed.data };
 }
 
+function draftFromInput(input: NormalizedInput): ModelCard {
+  const title = [input.name, input.manufacturer].filter(Boolean).join(" ");
+  return {
+    seo_title: title.length > 70 ? input.name.slice(0, 70) : title,
+    seo_description: input.description ?? `${input.name}: описание не сгенерировано, ${NO_DATA}.`,
+    specs: input.specs.map((s) => ({ group: "Прочее", name: s.key, value: s.value, source: "input" as const, source_quote: s.value })),
+    search_queries: [input.name],
+    commercial: { audience: [], tasks: [], advantages: [], manager_questions: [], limitations: [] },
+  };
+}
+
 export async function runPipeline(rawInput: unknown, deps: GenerateDeps): Promise<ProductCard> {
   const log = deps.log ?? ((m: string) => console.error(m));
   const now = deps.now ?? Date.now;
@@ -100,14 +112,18 @@ export async function runPipeline(rawInput: unknown, deps: GenerateDeps): Promis
     }
   }
 
+  const warnings: ProductCard["warnings"] = [];
   if (!card) {
-    throw new CoreError("invalid_output", "Модель не вернула карточку в нужном формате после повторов.", {
-      details: lastParseError,
+    // Модель ни разу не дала разбираемый JSON: черновик собирается кодом только из входа.
+    card = draftFromInput(input);
+    violations = checkCard(card, idx).filter((v) => v.kind !== "length" || v.field === "seo_title");
+    warnings.push({
+      code: "invalid_output",
+      message: `Модель не вернула карточку в нужном формате (${lastParseError}). Черновик собран из входных данных, тексты требуют написания.`,
     });
   }
   // Ответ последней попытки мог не разобраться: тогда берём последнюю разобранную карточку и её нарушения.
-  const final = scrubUnverified(card, violations);
-  const warnings: ProductCard["warnings"] = [];
+  const final = scrubUnverified(card, violations, idx);
   for (const v of violations) {
     if (v.kind === "quote" || v.kind === "spec_number") {
       warnings.push({ code: "unverified_value", message: `${v.message} Значение заменено на «${NO_DATA}».` });
