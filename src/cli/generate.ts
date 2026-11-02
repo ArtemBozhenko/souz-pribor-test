@@ -1,10 +1,13 @@
 /**
- * CLI: `npm run generate -- <input.json>` (или JSON на stdin) → карточка JSON в stdout.
+ * CLI: `npm run generate -- <input.json>` → рядом `<input>.card.json` и `<input>.card.md`.
+ * Без файла читает JSON со stdin и печатает карточку в stdout.
+ * Ключ модели — только из env (LLM_API_KEY); без ключа отдаётся заглушка.
  */
 import "dotenv/config";
-import { readFile } from "node:fs/promises";
-import { ProductInputSchema } from "../contract";
-import { generateCard } from "../core";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import type { ProductInput } from "../contract";
+import { generateCard, isCoreError, normalizeInput, parseInputJson, renderMarkdown } from "../core";
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -12,21 +15,38 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+function outputPaths(file: string): { json: string; md: string } {
+  const dir = path.dirname(file);
+  const base = path.basename(file, path.extname(file));
+  return { json: path.join(dir, `${base}.card.json`), md: path.join(dir, `${base}.card.md`) };
+}
+
 async function main(): Promise<void> {
   const file = process.argv[2];
-  const raw = file ? await readFile(file, "utf8") : process.stdin.isTTY ? "" : await readStdin();
-  const json: unknown = raw.trim() ? JSON.parse(raw) : { name: "Манометр МП-100" };
-  const parsed = ProductInputSchema.safeParse(json);
-  if (!parsed.success) {
-    console.error("Некорректные входные данные:", parsed.error.issues.map((i) => i.message).join("; "));
-    process.exitCode = 1;
+  if (!file && process.stdin.isTTY) {
+    console.error("Использование: npm run generate -- <input.json>");
+    process.exitCode = 2;
     return;
   }
-  const card = await generateCard(parsed.data);
-  process.stdout.write(JSON.stringify(card, null, 2) + "\n");
+  const raw = file ? await readFile(file, "utf8") : await readStdin();
+  // Вход проверяется до вызова модели.
+  const data = parseInputJson(raw);
+  normalizeInput(data);
+  const card = await generateCard(data as ProductInput);
+  const json = JSON.stringify(card, null, 2) + "\n";
+  if (!file) {
+    process.stdout.write(json);
+    return;
+  }
+  const out = outputPaths(file);
+  await writeFile(out.json, json, "utf8");
+  await writeFile(out.md, renderMarkdown(card), "utf8");
+  console.error(`Готово: ${out.json}, ${out.md}`);
+  for (const w of card.warnings) console.error(`Предупреждение: ${w.message}`);
 }
 
 main().catch((err: unknown) => {
-  console.error("Ошибка генерации:", err instanceof Error ? err.message : err);
+  if (isCoreError(err)) console.error(`Ошибка (${err.code}): ${err.message}`);
+  else console.error("Ошибка генерации:", err instanceof Error ? err.message : err);
   process.exitCode = 1;
 });
