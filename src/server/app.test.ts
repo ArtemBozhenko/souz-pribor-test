@@ -61,3 +61,42 @@ describe("API", () => {
     expect(spec.json().paths).toHaveProperty("/api/generate");
   });
 });
+
+describe("ошибки ядра → ApiError с HTTP-кодом по смыслу", () => {
+  const cases: [string, Record<string, unknown>, number][] = [
+    ["таймаут модели", { code: "timeout", message: "Модель не ответила за 60 с" }, 504],
+    ["нет ключа", { code: "no_api_key", message: "Не задан ключ LLM" }, 503],
+    ["неподдержанный вход", { code: "unsupported", message: "Вход не поддерживается" }, 422],
+    ["явный statusCode", { code: "something", message: "Что-то", statusCode: 429 }, 429],
+  ];
+  for (const [title, error, status] of cases) {
+    it(title, async () => {
+      const app = await buildApp({ generate: async () => { throw Object.assign(new Error(), error); } });
+      const res = await app.inject({ method: "POST", url: "/api/generate", payload: { name: "X" } });
+      await app.close();
+      expect(res.statusCode).toBe(status);
+      const body = ApiErrorSchema.parse(res.json());
+      expect(body.error.code).toBe(error.code);
+      expect(body.error.message).toBe(error.message);
+    });
+  }
+
+  it("английское сообщение ядра заменяется русским", async () => {
+    const app = await buildApp({
+      generate: async () => { throw Object.assign(new Error("upstream 502"), { code: "llm_unavailable" }); },
+    });
+    const res = await app.inject({ method: "POST", url: "/api/generate", payload: { name: "X" } });
+    await app.close();
+    expect(res.statusCode).toBe(502);
+    expect(ApiErrorSchema.parse(res.json()).error.message).toMatch(/[а-яё]/i);
+  });
+
+  it("неизвестная ошибка → 500 internal без деталей", async () => {
+    const app = await buildApp({ generate: async () => { throw new Error("secret stack"); } });
+    const res = await app.inject({ method: "POST", url: "/api/generate", payload: { name: "X" } });
+    await app.close();
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toContain("secret");
+    expect(ApiErrorSchema.parse(res.json()).error.code).toBe("internal");
+  });
+});
