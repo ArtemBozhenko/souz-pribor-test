@@ -10,6 +10,11 @@ export const LlmConfigSchema = z.object({
   /** Список моделей для выбора через запятую. Пусто — доступна только LLM_MODEL. */
   LLM_MODELS: z.string().optional(),
   LLM_API_KEY: z.string().optional(),
+  /**
+   * Предел выходных токенов на ответ (рассуждения модели + JSON карточки).
+   * Haiku 5.5 и другие модели с рассуждениями тратят на них до 9 тыс. токенов, сама карточка — до 4 тыс.
+   */
+  LLM_MAX_TOKENS: z.coerce.number().int().min(1000).max(64000).default(16000).or(emptyToUndefined.transform(() => 16000)),
   /** Только anthropic: output_config.effort. */
   LLM_EFFORT: z.enum(["low", "medium", "high"]).optional().or(emptyToUndefined),
   /** Structured outputs поверх JSON-по-просьбе: auto — включено там, где известно, что работает. */

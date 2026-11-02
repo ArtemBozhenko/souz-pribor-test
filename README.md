@@ -121,7 +121,7 @@ for f in tm-520r pd100 dm02; do npm run generate -- examples/$f.json; done
 - **API:** `GET /api/models` → `{ default, models: [{ id, label }] }`; в `POST /api/generate` необязательное поле `model`. Модель вне списка — 400 `unsupported_model` с русским сообщением, на модель по умолчанию запрос не подменяется.
 - **CLI:** `npm run generate -- --model claude-haiku-5-5 input.json`, та же проверка по списку.
 
-Целевая модель — Claude Sonnet 5.5: хорошо держит русский деловой текст и длинные инструкции, поддерживает structured output. Дополнительно: `LLM_EFFORT` (только anthropic) и `LLM_STRUCTURED` (`auto` / `on` / `off`).
+Целевая модель — Claude Sonnet 5.5: хорошо держит русский деловой текст и длинные инструкции, поддерживает structured output. Дополнительно: `LLM_MAX_TOKENS` — предел ответа модели, по умолчанию 16000: Haiku 5.5 тратит на рассуждения до ~9 тыс. токенов, а карточка занимает ещё до ~4 тыс. Если ответ не уложился в предел, возвращается `llm_truncated` с названием модели и пределом. `LLM_EFFORT` (только anthropic) и `LLM_STRUCTURED` (`auto` / `on` / `off`).
 
 Карточки примеров сгенерированы на `claude-sonnet-5-5`. Демо пока работает на бесплатной `glm-4.5-flash` через Z.ai; защита от выдумок от модели не зависит, потому что работает в коде.
 
