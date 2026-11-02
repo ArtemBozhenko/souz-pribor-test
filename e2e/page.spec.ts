@@ -279,6 +279,13 @@ test.describe("выбор модели", () => {
     expect((await req).postDataJSON()).toEqual({ name: "Манометр МП-100" });
     await expect(modelSelect(page)).toHaveCount(0);
     await expect(page.getByTestId("meta")).toContainText("Модель: claude-sonnet-5-5");
+
+    // model из JSON не обходит список: до его загрузки поле не уходит.
+    await page.getByRole("tab", { name: "JSON" }).click();
+    await page.getByLabel("JSON с данными").fill(JSON.stringify({ name: "X", model: "claude-haiku-5-5" }));
+    const jsonReq = page.waitForRequest("**/api/generate");
+    await generate(page);
+    expect((await jsonReq).postDataJSON()).toEqual({ name: "X" });
   });
 
   test("неизвестная модель → 400 unsupported_model по-русски", async ({ request }) => {

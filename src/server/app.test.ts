@@ -117,7 +117,9 @@ describe("выбор модели", () => {
         { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 — быстрее, дешевле" },
       ],
     });
-    expect(spec.json().paths).toHaveProperty("/api/models");
+    const schema = spec.json().paths["/api/models"].get.responses["200"].content["application/json"].schema;
+    expect(schema.required).toEqual(expect.arrayContaining(["default", "models"]));
+    expect(schema.properties.models.items.required).toEqual(expect.arrayContaining(["id", "label"]));
   });
 
   it("model из тела доходит до клиента LLM, неизвестная — 400 unsupported_model", async () => {

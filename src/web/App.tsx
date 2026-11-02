@@ -10,8 +10,13 @@ import type { ProductInput } from "../contract";
 export function App() {
   const { state, run } = useGenerate();
   const models = useModels();
-  // Пока список не загрузился, поле model не передаётся — сервер берёт модель по умолчанию.
-  const submit = (input: ProductInput) => run(models.model ? { ...input, model: models.model } : input);
+  // Модель задаёт только список. Пока он не загрузился, поле model не передаётся (в том числе из JSON) —
+  // сервер берёт модель по умолчанию.
+  const submit = (input: ProductInput) => {
+    const { model: _ignored, ...rest } = input;
+    void _ignored;
+    run(models.model ? { ...rest, model: models.model } : rest);
+  };
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
       <header className="mb-6">
