@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 dist/
 .DS_Store
+playwright-report/
+test-results/
+.ai/solo/
