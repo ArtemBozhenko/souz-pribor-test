@@ -237,5 +237,7 @@ test("пример — реальный ТМ-520Р; на телефоне наз
     expect(clipped, await key.inputValue()).toBe(false);
   }
   // Многострочное значение не склеивается в одну строку.
-  await expect(page.getByLabel("Значение 3")).toHaveValue("0 - 100;\n-0,1 - 0;\n-0,1 - 24;");
+  const multiline = page.getByLabel("Значение 3");
+  await expect(multiline).toHaveValue("0 - 100;\n-0,1 - 0;\n-0,1 - 24;");
+  expect(await multiline.evaluate((el: HTMLTextAreaElement) => el.scrollHeight > el.clientHeight + 1)).toBe(false);
 });
