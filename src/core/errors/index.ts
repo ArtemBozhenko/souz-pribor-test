@@ -51,6 +51,11 @@ export class CoreError extends Error {
     return HTTP_STATUS[this.code];
   }
 
+  /** То же, что httpStatus: сервер (src/server/errors.ts) читает statusCode. */
+  get statusCode(): number {
+    return HTTP_STATUS[this.code];
+  }
+
   toApiError(): ApiError {
     return {
       error: { code: this.code, message: this.message, ...(this.details === undefined ? {} : { details: this.details }) },

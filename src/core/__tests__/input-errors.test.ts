@@ -51,6 +51,7 @@ describe("маппинг ошибок API", () => {
     expect(e.message).not.toContain("provider text");
     expect(e.requestId).toBe("req_x");
     expect(e.toApiError().error.code).toBe(code);
+    expect(e.statusCode).toBeGreaterThanOrEqual(500);
   });
 
   it("таймаут Anthropic SDK → llm_timeout", async () => {
